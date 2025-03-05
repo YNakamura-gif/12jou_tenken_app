@@ -16,13 +16,28 @@ def load_master_data():
     try:
         master_path = "data/master_data.csv"
         if os.path.exists(master_path):
-            df = pd.read_csv(master_path, encoding='shift_jis')
-            return df['場所'].unique().tolist(), df['劣化名'].unique().tolist()
-        else:
-            st.warning("マスターデータファイルが見つかりません。")
+            # 複数のエンコーディングを試行
+            encodings = ['utf-8', 'shift_jis', 'cp932', 'utf-8-sig']
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(master_path, encoding=encoding)
+                    return df['場所'].unique().tolist(), df['劣化名'].unique().tolist()
+                except UnicodeDecodeError:
+                    continue
+                except Exception as e:
+                    st.error(f"マスターデータの読み込みエラー: {str(e)}")
+                    continue
+            
+            st.error("適切なエンコーディングが見つかりませんでした。")
             return [], []
+        else:
+            st.warning("マスターデータファイルが見つかりません。デフォルトの選択肢を使用します。")
+            # デフォルトの選択肢を提供
+            default_locations = ["1階廊下", "2階廊下", "屋上", "外壁", "階段", "玄関", "機械室", "駐車場"]
+            default_deteriorations = ["ひび割れ", "剥離", "漏水", "腐食", "変形", "欠損", "さび", "変色"]
+            return default_locations, default_deteriorations
     except Exception as e:
-        st.error(f"マスターデータの読み込みエラー: {str(e)}")
+        st.error(f"予期せぬエラー: {str(e)}")
         return [], []
 
 # 予測変換機能
