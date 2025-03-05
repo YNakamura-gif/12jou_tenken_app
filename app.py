@@ -11,6 +11,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# マスターデータの読み込み
+def load_master_data():
+    try:
+        master_path = "data/master_data.csv"
+        if os.path.exists(master_path):
+            df = pd.read_csv(master_path, encoding='shift_jis')
+            return df['場所'].unique().tolist(), df['劣化名'].unique().tolist()
+        else:
+            st.warning("マスターデータファイルが見つかりません。")
+            return [], []
+    except Exception as e:
+        st.error(f"マスターデータの読み込みエラー: {str(e)}")
+        return [], []
+
+# 予測変換機能
+def get_suggestions(input_text, options):
+    if not input_text:
+        return []
+    return [opt for opt in options if input_text.lower() in opt.lower()]
+
 # セッション状態の初期化
 if 'inspection_items' not in st.session_state:
     st.session_state.inspection_items = []
@@ -20,6 +40,9 @@ if 'current_deterioration_number' not in st.session_state:
 # データ保存用ディレクトリの作成
 if not os.path.exists('data'):
     os.makedirs('data')
+
+# マスターデータの読み込み
+locations, deterioration_types = load_master_data()
 
 # タブの作成
 tab_input, tab_view = st.tabs(["点検入力", "データ閲覧"])
@@ -48,8 +71,30 @@ with tab_input:
         
         with col1:
             location = st.text_input("場所")
+            if location:
+                location_suggestions = get_suggestions(location, locations)
+                if location_suggestions:
+                    selected_location = st.selectbox(
+                        "場所の候補",
+                        ["入力値を使用"] + location_suggestions,
+                        key="location_suggestions"
+                    )
+                    if selected_location != "入力値を使用":
+                        location = selected_location
+
         with col2:
             deterioration_name = st.text_input("劣化名")
+            if deterioration_name:
+                deterioration_suggestions = get_suggestions(deterioration_name, deterioration_types)
+                if deterioration_suggestions:
+                    selected_deterioration = st.selectbox(
+                        "劣化名の候補",
+                        ["入力値を使用"] + deterioration_suggestions,
+                        key="deterioration_suggestions"
+                    )
+                    if selected_deterioration != "入力値を使用":
+                        deterioration_name = selected_deterioration
+
         with col3:
             photo_number = st.text_input("写真番号")
 
@@ -125,4 +170,4 @@ with tab_view:
                 mime="text/csv"
             )
     else:
-        st.info("保存されたデータがありません") 
+        st.info("保存されたデータがありません")
