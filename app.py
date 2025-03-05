@@ -232,20 +232,19 @@ with tab_input:
     if st.session_state.inspection_items:
         st.subheader("入力済み劣化項目")
         
-        # 入力項目の表示とボタンの配置
+        # スマホ表示に最適化したコンパクトなレイアウト
         for i, item in enumerate(st.session_state.inspection_items):
-            col1, col2, col3, col4, col5 = st.columns([1, 2, 2, 2, 1])
-            with col1:
-                st.write(f"No.{item['deterioration_number']}")
-            with col2:
-                st.write(item['location'])
-            with col3:
-                st.write(item['deterioration_name'])
-            with col4:
-                st.write(item['photo_number'])
-            with col5:
-                button_col1, button_col2 = st.columns(2)
-                with button_col1:
+            with st.container():
+                cols = st.columns([0.6, 0.2, 0.2])
+                
+                # 項目情報を1列目にまとめて表示
+                with cols[0]:
+                    st.markdown(f"""
+                    **No.{item['deterioration_number']}**: {item['location']} / {item['deterioration_name']} / {item['photo_number']}
+                    """)
+                
+                # 編集ボタン
+                with cols[1]:
                     st.button(
                         "編集",
                         key=f"edit_{i}",
@@ -253,7 +252,9 @@ with tab_input:
                         args=(i,),
                         use_container_width=True
                     )
-                with button_col2:
+                
+                # 削除ボタン
+                with cols[2]:
                     st.button(
                         "削除",
                         key=f"delete_{i}",
@@ -261,6 +262,10 @@ with tab_input:
                         args=(i,),
                         use_container_width=True
                     )
+                
+                # 項目間の区切り線（オプション）
+                if i < len(st.session_state.inspection_items) - 1:
+                    st.markdown("---")
 
     # 保存ボタン
     if st.button("保存"):
