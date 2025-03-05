@@ -116,6 +116,14 @@ def add_item():
         st.session_state.temp_location = ""
         st.session_state.temp_deterioration = ""
         st.session_state.temp_photo = ""
+        
+        # 入力ウィジェットの値を直接クリア
+        st.session_state.location_input = ""
+        st.session_state.deterioration_input = ""
+        st.session_state.photo_number_input = ""
+        
+        # 画面を再読み込み
+        st.experimental_rerun()
 
 def edit_item(index):
     st.session_state.editing_item_index = index
