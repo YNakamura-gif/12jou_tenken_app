@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 from datetime import datetime
+import jaconv
 
 # ページ設定
 st.set_page_config(
@@ -21,7 +22,17 @@ def load_master_data():
             for encoding in encodings:
                 try:
                     df = pd.read_csv(master_path, encoding=encoding)
-                    return df['場所'].unique().tolist(), df['劣化名'].unique().tolist()
+                    # 場所と劣化名のマッピングを作成
+                    locations_dict = dict(zip(df['場所よみ'], df['場所']))
+                    deteriorations_dict = dict(zip(df['劣化名よみ'], df['劣化名']))
+                    return (
+                        df['場所'].unique().tolist(),
+                        df['劣化名'].unique().tolist(),
+                        locations_dict,
+                        deteriorations_dict,
+                        df['場所よみ'].unique().tolist(),
+                        df['劣化名よみ'].unique().tolist()
+                    )
                 except UnicodeDecodeError:
                     continue
                 except Exception as e:
@@ -29,35 +40,103 @@ def load_master_data():
                     continue
             
             st.error("適切なエンコーディングが見つかりませんでした。")
-            return [], []
+            return [], [], {}, {}, [], []
         else:
             st.warning("マスターデータファイルが見つかりません。デフォルトの選択肢を使用します。")
             # デフォルトの選択肢を提供
             default_locations = ["1階廊下", "2階廊下", "屋上", "外壁", "階段", "玄関", "機械室", "駐車場"]
             default_deteriorations = ["ひび割れ", "剥離", "漏水", "腐食", "変形", "欠損", "さび", "変色"]
-            return default_locations, default_deteriorations
+            return default_locations, default_deteriorations, {}, {}, [], []
     except Exception as e:
         st.error(f"予期せぬエラー: {str(e)}")
-        return [], []
+        return [], [], {}, {}, [], []
 
 # 予測変換機能
-def get_suggestions(input_text, options):
+def get_suggestions(input_text, options, yomi_options, mapping_dict):
     if not input_text:
         return []
-    return [opt for opt in options if input_text.lower() in opt.lower()]
+    
+    # 入力をひらがなに変換
+    input_hira = jaconv.kata2hira(jaconv.normalize(input_text))
+    
+    # 候補を探す
+    suggestions = []
+    
+    # 読み仮名での検索
+    for yomi in yomi_options:
+        if yomi.startswith(input_hira):
+            suggestions.append(mapping_dict[yomi])
+    
+    # 通常の検索（元の表記でも検索可能に）
+    for opt in options:
+        opt_hira = jaconv.kata2hira(jaconv.normalize(opt))
+        if opt_hira.startswith(input_hira):
+            if opt not in suggestions:  # 重複を避ける
+                suggestions.append(opt)
+    
+    return suggestions
 
 # セッション状態の初期化
 if 'inspection_items' not in st.session_state:
     st.session_state.inspection_items = []
 if 'current_deterioration_number' not in st.session_state:
     st.session_state.current_deterioration_number = 1
+if 'editing_item_index' not in st.session_state:
+    st.session_state.editing_item_index = -1
+if 'editing_location' not in st.session_state:
+    st.session_state.editing_location = ""
+if 'editing_deterioration' not in st.session_state:
+    st.session_state.editing_deterioration = ""
+if 'editing_photo' not in st.session_state:
+    st.session_state.editing_photo = ""
+
+def add_item():
+    if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
+        new_item = {
+            "deterioration_number": st.session_state.current_deterioration_number if st.session_state.editing_item_index < 0 else st.session_state.inspection_items[st.session_state.editing_item_index]["deterioration_number"],
+            "location": st.session_state.temp_location,
+            "deterioration_name": st.session_state.temp_deterioration,
+            "photo_number": st.session_state.temp_photo
+        }
+        
+        if st.session_state.editing_item_index >= 0:
+            # 編集モードの場合は既存のアイテムを更新
+            st.session_state.inspection_items[st.session_state.editing_item_index] = new_item
+            st.session_state.editing_item_index = -1  # 編集モードを終了
+            # 編集用の値をクリア
+            st.session_state.editing_location = ""
+            st.session_state.editing_deterioration = ""
+            st.session_state.editing_photo = ""
+        else:
+            # 新規追加モード
+            st.session_state.inspection_items.append(new_item)
+            st.session_state.current_deterioration_number += 1
+        
+        # 入力欄をクリア
+        st.session_state.temp_location = ""
+        st.session_state.temp_deterioration = ""
+        st.session_state.temp_photo = ""
+
+def edit_item(index):
+    st.session_state.editing_item_index = index
+    item = st.session_state.inspection_items[index]
+    st.session_state.editing_location = item["location"]
+    st.session_state.editing_deterioration = item["deterioration_name"]
+    st.session_state.editing_photo = item["photo_number"]
+
+def delete_item(index):
+    del st.session_state.inspection_items[index]
+    # 劣化番号を振り直す
+    for i, item in enumerate(st.session_state.inspection_items):
+        item["deterioration_number"] = i + 1
+    st.session_state.current_deterioration_number = len(st.session_state.inspection_items) + 1
 
 # データ保存用ディレクトリの作成
 if not os.path.exists('data'):
     os.makedirs('data')
 
 # マスターデータの読み込み
-locations, deterioration_types = load_master_data()
+locations, deterioration_types, locations_dict, deteriorations_dict, locations_yomi, deteriorations_yomi = load_master_data()
 
 # タブの作成
 tab_input, tab_view = st.tabs(["点検入力", "データ閲覧"])
@@ -85,9 +164,14 @@ with tab_input:
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            location = st.text_input("場所")
+            location = st.text_input(
+                "場所",
+                key="location_input",
+                value=st.session_state.editing_location if st.session_state.editing_item_index >= 0 else "",
+                help="ひらがなで入力してください（例：いっかい）"
+            )
             if location:
-                location_suggestions = get_suggestions(location, locations)
+                location_suggestions = get_suggestions(location, locations, locations_yomi, locations_dict)
                 if location_suggestions:
                     selected_location = st.selectbox(
                         "場所の候補",
@@ -98,9 +182,14 @@ with tab_input:
                         location = selected_location
 
         with col2:
-            deterioration_name = st.text_input("劣化名")
+            deterioration_name = st.text_input(
+                "劣化名",
+                key="deterioration_input",
+                value=st.session_state.editing_deterioration if st.session_state.editing_item_index >= 0 else "",
+                help="ひらがなで入力してください（例：ひび）"
+            )
             if deterioration_name:
-                deterioration_suggestions = get_suggestions(deterioration_name, deterioration_types)
+                deterioration_suggestions = get_suggestions(deterioration_name, deterioration_types, deteriorations_yomi, deteriorations_dict)
                 if deterioration_suggestions:
                     selected_deterioration = st.selectbox(
                         "劣化名の候補",
@@ -111,23 +200,55 @@ with tab_input:
                         deterioration_name = selected_deterioration
 
         with col3:
-            photo_number = st.text_input("写真番号")
+            photo_number = st.text_input(
+                "写真番号",
+                key="photo_number_input",
+                value=st.session_state.editing_photo if st.session_state.editing_item_index >= 0 else ""
+            )
 
-        if st.button("劣化項目を追加"):
-            new_item = {
-                "deterioration_number": st.session_state.current_deterioration_number,
-                "location": location,
-                "deterioration_name": deterioration_name,
-                "photo_number": photo_number
-            }
-            st.session_state.inspection_items.append(new_item)
-            st.session_state.current_deterioration_number += 1
+        # 一時的に値を保存
+        st.session_state.temp_location = location
+        st.session_state.temp_deterioration = deterioration_name
+        st.session_state.temp_photo = photo_number
+
+        # 編集モード時のボタンテキストを変更
+        button_text = "更新" if st.session_state.editing_item_index >= 0 else "劣化項目を追加"
+        if st.button(button_text, on_click=add_item):
+            pass  # 実際の処理はコールバック関数で行う
 
     # 現在の入力項目一覧
     if st.session_state.inspection_items:
         st.subheader("入力済み劣化項目")
-        df = pd.DataFrame(st.session_state.inspection_items)
-        st.dataframe(df)
+        
+        # 入力項目の表示とボタンの配置
+        for i, item in enumerate(st.session_state.inspection_items):
+            col1, col2, col3, col4, col5 = st.columns([1, 2, 2, 2, 1])
+            with col1:
+                st.write(f"No.{item['deterioration_number']}")
+            with col2:
+                st.write(item['location'])
+            with col3:
+                st.write(item['deterioration_name'])
+            with col4:
+                st.write(item['photo_number'])
+            with col5:
+                button_col1, button_col2 = st.columns(2)
+                with button_col1:
+                    st.button(
+                        "編集",
+                        key=f"edit_{i}",
+                        on_click=edit_item,
+                        args=(i,),
+                        use_container_width=True
+                    )
+                with button_col2:
+                    st.button(
+                        "削除",
+                        key=f"delete_{i}",
+                        on_click=delete_item,
+                        args=(i,),
+                        use_container_width=True
+                    )
 
     # 保存ボタン
     if st.button("保存"):
