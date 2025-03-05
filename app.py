@@ -131,22 +131,21 @@ with tab_input:
 
     # 保存ボタン
     if st.button("保存"):
-        data = {
-            "inspection_date": inspection_date.strftime("%Y-%m-%d"),
-            "inspector_name": inspector_name,
-            "site_id": site_id,
-            "remarks": remarks,
-            "deterioration_items": st.session_state.inspection_items
-        }
+        # 劣化データを展開して保存用のデータフレームを作成
+        rows = []
+        for item in st.session_state.inspection_items:
+            rows.append({
+                "点検日": inspection_date.strftime("%Y-%m-%d"),
+                "点検者名": inspector_name,
+                "現場ID": site_id,
+                "備考": remarks,
+                "劣化番号": item["deterioration_number"],
+                "場所": item["location"],
+                "劣化名": item["deterioration_name"],
+                "写真番号": item["photo_number"]
+            })
         
-        # CSVファイルへの保存
-        df_save = pd.DataFrame([{
-            "点検日": data["inspection_date"],
-            "点検者名": data["inspector_name"],
-            "現場ID": data["site_id"],
-            "備考": data["remarks"],
-            "劣化データ": json.dumps(data["deterioration_items"], ensure_ascii=False)
-        }])
+        df_save = pd.DataFrame(rows)
         
         csv_path = "data/inspection_data.csv"
         if os.path.exists(csv_path):
