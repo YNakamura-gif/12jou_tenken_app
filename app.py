@@ -89,6 +89,8 @@ if 'editing_deterioration' not in st.session_state:
     st.session_state.editing_deterioration = ""
 if 'editing_photo' not in st.session_state:
     st.session_state.editing_photo = ""
+if 'form_submitted' not in st.session_state:
+    st.session_state.form_submitted = False
 
 def add_item():
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
@@ -117,13 +119,8 @@ def add_item():
         st.session_state.temp_deterioration = ""
         st.session_state.temp_photo = ""
         
-        # 入力ウィジェットの値を直接クリア
-        st.session_state.location_input = ""
-        st.session_state.deterioration_input = ""
-        st.session_state.photo_number_input = ""
-        
-        # 画面を再読み込み
-        st.experimental_rerun()
+        # フォーム送信フラグを設定
+        st.session_state.form_submitted = True
 
 def edit_item(index):
     st.session_state.editing_item_index = index
@@ -170,6 +167,13 @@ with tab_input:
         st.subheader("劣化内容")
         
         col1, col2, col3 = st.columns(3)
+        
+        # フォーム送信後に入力欄をクリア
+        if st.session_state.form_submitted:
+            st.session_state.location_input = ""
+            st.session_state.deterioration_input = ""
+            st.session_state.photo_number_input = ""
+            st.session_state.form_submitted = False
         
         with col1:
             location = st.text_input(
