@@ -510,13 +510,19 @@ with tab_view:
                         df[col] = df[col].fillna(0).astype(int)
                 
                 try:
-                    # 編集可能なデータエディタを表示（experimental版を使用）
-                    edited_df = st.experimental_data_editor(
-                        df,
-                        key="data_editor",
-                        use_container_width=True,
-                        disabled=["劣化番号"]  # 劣化番号は編集不可
-                    )
+                    # まずst.data_editorを試す
+                    try:
+                        edited_df = st.data_editor(
+                            df,
+                            key="data_editor",
+                            use_container_width=True,
+                            disabled=["劣化番号"]  # 劣化番号は編集不可
+                        )
+                    except AttributeError:
+                        # st.data_editorが存在しない場合は代替手段を使用
+                        st.warning("お使いのStreamlitバージョンではデータエディタがサポートされていません。代替の編集方法を使用します。")
+                        st.dataframe(df)
+                        edited_df = df.copy()
                 except Exception as e:
                     st.error(f"データエディタでエラーが発生しました: {str(e)}")
                     st.warning("代替の編集方法を使用します。")
