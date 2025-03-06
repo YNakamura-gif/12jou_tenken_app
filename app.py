@@ -474,7 +474,7 @@ with tab_view:
     with col2:
         edit_mode = st.checkbox("編集モード", value=False)
     
-    if auto_refresh:
+    if auto_refresh and not edit_mode:  # 編集モード中は自動更新しない
         st.markdown("""
         <meta http-equiv="refresh" content="10">
         """, unsafe_allow_html=True)
@@ -493,26 +493,79 @@ with tab_view:
         if not df.empty:
             st.write(f"合計 {len(df)} 件のデータがあります")
             
-            # 編集モードの場合は選択列を追加
+            # 編集モードの場合
             if edit_mode:
-                # 一意のIDを各行に付与（インデックスを使用）
-                df['選択'] = df.index
-                selected_row = st.selectbox(
-                    "編集するデータを選択",
-                    options=df.index,
-                    format_func=lambda i: f"{df.loc[i, '点検日']} - {df.loc[i, '現場名']} - {df.loc[i, '場所']} - {df.loc[i, '劣化名']}"
+                st.info("テーブル内のセルをタップして直接編集できます。編集後は「変更を保存」ボタンをクリックしてください。")
+                
+                # 編集可能なデータエディタを表示
+                edited_df = st.data_editor(
+                    df,
+                    num_rows="dynamic",
+                    key="data_editor",
+                    use_container_width=True,
+                    column_config={
+                        "点検日": st.column_config.DateColumn(
+                            "点検日",
+                            format="YYYY-MM-DD",
+                        ),
+                    },
+                    disabled=["劣化番号"]  # 劣化番号は編集不可
                 )
                 
-                if st.button("選択したデータを編集"):
+                # 変更を保存するボタン
+                if st.button("変更を保存", key="save_table_edits"):
+                    try:
+                        # 更新情報を追加
+                        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # 更新履歴情報の列がなければ追加
+                        if '最終更新日時' not in edited_df.columns:
+                            edited_df['最終更新日時'] = None
+                        if '更新者' not in edited_df.columns:
+                            edited_df['更新者'] = None
+                        if '更新回数' not in edited_df.columns:
+                            edited_df['更新回数'] = 0
+                        
+                        # 変更された行を特定して更新情報を設定
+                        for idx in edited_df.index:
+                            edited_df.at[idx, '最終更新日時'] = current_time
+                            # 点検者名があれば更新者として使用、なければ「不明」
+                            edited_df.at[idx, '更新者'] = edited_df.at[idx, '点検者名'] if pd.notna(edited_df.at[idx, '点検者名']) else "不明"
+                            # 更新回数を増やす
+                            if pd.notna(edited_df.at[idx, '更新回数']):
+                                edited_df.at[idx, '更新回数'] = int(edited_df.at[idx, '更新回数']) + 1
+                            else:
+                                edited_df.at[idx, '更新回数'] = 1
+                        
+                        # CSVに保存
+                        edited_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+                        st.success("変更を保存しました")
+                        st.experimental_rerun()  # 画面を更新
+                    except Exception as e:
+                        st.error(f"保存中にエラーが発生しました: {str(e)}")
+                
+                # 個別データ編集機能も残しておく
+                st.subheader("個別データの詳細編集")
+                st.write("より詳細な編集が必要な場合は、以下から選択してください：")
+                
+                # 一意のIDを各行に付与（インデックスを使用）
+                edited_df['選択'] = edited_df.index
+                selected_row = st.selectbox(
+                    "編集するデータを選択",
+                    options=edited_df.index,
+                    format_func=lambda i: f"{edited_df.loc[i, '点検日']} - {edited_df.loc[i, '現場名']} - {edited_df.loc[i, '場所']} - {edited_df.loc[i, '劣化名']}"
+                )
+                
+                if st.button("選択したデータを詳細編集"):
                     # 選択したデータを編集用にセッションに保存
                     st.session_state.editing_saved_data = True
-                    st.session_state.editing_saved_row = df.loc[selected_row].to_dict()
+                    st.session_state.editing_saved_row = edited_df.loc[selected_row].to_dict()
                     st.session_state.editing_saved_index = selected_row
                     st.session_state.active_tab = "input"  # 点検入力タブに切り替え
                     st.experimental_rerun()
-            
-            # データフレームの表示
-            st.dataframe(df.drop(columns=['選択']) if edit_mode and '選択' in df.columns else df)
+            else:
+                # 通常の表示モード（編集不可）
+                st.dataframe(df)
             
             # CSVダウンロード
             csv = df.to_csv(index=False, encoding='utf-8-sig')
