@@ -650,28 +650,52 @@ with tab_view:
                 
                 # 行削除機能を別のセクションに移動
                 st.subheader("行の削除")
+                
+                # セッション状態の初期化
+                if 'df_to_edit' not in st.session_state:
+                    st.session_state.df_to_edit = df.copy()
+                else:
+                    # データフレームが変更された場合は更新
+                    if len(df) != len(st.session_state.df_to_edit):
+                        st.session_state.df_to_edit = df.copy()
+                
+                # 削除用の関数
+                def delete_row():
+                    row_idx = st.session_state.row_to_delete
+                    if 0 <= row_idx < len(st.session_state.df_to_edit):
+                        # 行を削除
+                        st.session_state.df_to_edit = st.session_state.df_to_edit.drop(index=row_idx).reset_index(drop=True)
+                        st.session_state.row_deleted = True
+                        st.session_state.deleted_row_idx = row_idx
+                
                 col1, col2 = st.columns(2)
                 
                 with col1:
                     # 削除する行番号を入力
-                    row_to_delete = st.number_input(
+                    st.number_input(
                         "削除する行番号",
                         min_value=0,
-                        max_value=len(df)-1 if not df.empty else 0,
+                        max_value=len(st.session_state.df_to_edit)-1 if not st.session_state.df_to_edit.empty else 0,
                         value=0,
                         step=1,
-                        key="row_to_delete"
+                        key="row_to_delete",
+                        on_change=None  # 値が変更されても特に何もしない
                     )
                 
                 with col2:
                     # 削除ボタン
-                    if st.button("この行を削除", key="confirm_delete"):
-                        if 0 <= row_to_delete < len(df):
-                            # 指定された行を削除
-                            df = df.drop(index=row_to_delete).reset_index(drop=True)
-                            st.success(f"行番号 {row_to_delete} を削除しました")
-                        else:
-                            st.warning("有効な行番号を入力してください")
+                    st.button("この行を削除", key="confirm_delete", on_click=delete_row)
+                
+                # 削除成功メッセージ
+                if 'row_deleted' in st.session_state and st.session_state.row_deleted:
+                    st.success(f"行番号 {st.session_state.deleted_row_idx} を削除しました")
+                    # フラグをリセット
+                    st.session_state.row_deleted = False
+                    # 画面を更新
+                    st.rerun()
+                
+                # 編集用のデータフレームを更新
+                df = st.session_state.df_to_edit.copy()
                 
                 # データエディタの表示
                 try:
