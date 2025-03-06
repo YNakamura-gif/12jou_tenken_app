@@ -444,6 +444,11 @@ with tab_input:
             if st.button(button_text, key="add_deterioration_button"):
                 # 入力値が空でないか確認
                 if location and deterioration_name:
+                    # 一時的に値を保存
+                    st.session_state.temp_location = location
+                    st.session_state.temp_deterioration = deterioration_name
+                    st.session_state.temp_photo = photo_number
+                    
                     # 劣化項目を追加
                     add_item()
                     st.success(f"劣化項目「{location} / {deterioration_name}」を追加しました")
@@ -540,9 +545,6 @@ with tab_input:
                 rows.append({
                     "点検日": inspection_date.strftime("%Y-%m-%d"),
                     "点検者名": inspector_name,
-                    "現場名": site_name,
-                    "棟名": building_name,
-                    "備考": remarks,
                     "劣化番号": item["deterioration_number"],
                     "場所": item["location"],
                     "劣化名": item["deterioration_name"],
@@ -562,28 +564,14 @@ with tab_input:
                     
                     # 現場名と棟名の組み合わせごとに劣化番号を確認し、必要に応じて調整
                     for i, row in enumerate(rows):
-                        # 現場名と棟名が存在する場合のみ処理
-                        if "現場名" in row and "棟名" in row:
-                            site_name = row["現場名"]
-                            building_name = row["棟名"]
+                        # 劣化番号の重複を避けるために、既存の最大劣化番号を取得
+                        if not df_existing.empty and "劣化番号" in df_existing.columns:
+                            existing_max_number = df_existing["劣化番号"].max()
                             
-                            # 同じ現場名と棟名の既存データをフィルタリング
-                            if "現場名" in df_existing.columns and "棟名" in df_existing.columns:
-                                same_site_building = df_existing[(df_existing["現場名"] == site_name) & (df_existing["棟名"] == building_name)]
-                                
-                                # 既存データがある場合、劣化番号が重複しないように調整
-                                if not same_site_building.empty:
-                                    # 既存の最大劣化番号を取得
-                                    existing_max_number = same_site_building["劣化番号"].max()
-                                    
-                                    # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
-                                    if row["劣化番号"] <= existing_max_number:
-                                        # 劣化番号を既存の最大番号+1に設定
-                                        df_save.loc[i, "劣化番号"] = existing_max_number + 1
-                                        
-                                        # セッション状態の劣化番号も更新
-                                        site_building_key = f"{site_name}_{building_name}"
-                                        st.session_state.site_building_numbers[site_building_key] = existing_max_number + 2
+                            # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
+                            if row["劣化番号"] <= existing_max_number:
+                                # 劣化番号を既存の最大番号+1に設定
+                                df_save.loc[i, "劣化番号"] = existing_max_number + 1
                     
                     df_save = pd.concat([df_existing, df_save], ignore_index=True)
                 
