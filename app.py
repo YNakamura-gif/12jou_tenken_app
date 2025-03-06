@@ -76,7 +76,7 @@ def get_suggestions(input_text, options, yomi_options, mapping_dict):
     
     return suggestions
 
-# セッション状態の初期化（元の状態に戻す）
+# セッション状態の初期化
 if 'inspection_items' not in st.session_state:
     st.session_state.inspection_items = []
 if 'current_deterioration_number' not in st.session_state:
@@ -93,6 +93,14 @@ if 'form_submitted' not in st.session_state:
     st.session_state.form_submitted = False
 if 'saved_items' not in st.session_state:
     st.session_state.saved_items = []
+if 'editing_saved_data' not in st.session_state:
+    st.session_state.editing_saved_data = False
+if 'editing_saved_row' not in st.session_state:
+    st.session_state.editing_saved_row = {}
+if 'editing_saved_index' not in st.session_state:
+    st.session_state.editing_saved_index = -1
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = "input"
 
 def add_item():
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
@@ -158,37 +166,58 @@ def delete_item(index):
 
 def update_saved_data():
     if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
-        # CSVファイルを読み込む
-        csv_path = "data/inspection_data.csv"
-        df = pd.read_csv(csv_path, encoding='utf-8-sig')
-        
-        # 編集対象の行を取得
-        row_index = st.session_state.editing_saved_index
-        row = st.session_state.editing_saved_row
-        
-        # 更新データの作成
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        update_count = int(row.get('更新回数', 0)) + 1
-        
-        # データフレームの更新
-        df.loc[row_index, '点検日'] = inspection_date.strftime("%Y-%m-%d")
-        df.loc[row_index, '点検者名'] = inspector_name
-        df.loc[row_index, '現場ID'] = site_id
-        df.loc[row_index, '備考'] = remarks
-        df.loc[row_index, '場所'] = st.session_state.temp_location
-        df.loc[row_index, '劣化名'] = st.session_state.temp_deterioration
-        df.loc[row_index, '写真番号'] = st.session_state.temp_photo
-        df.loc[row_index, '最終更新日時'] = current_time
-        df.loc[row_index, '更新者'] = inspector_name
-        df.loc[row_index, '更新回数'] = update_count
-        
-        # CSVに保存
-        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        
-        # 編集モードを終了
-        st.session_state.editing_saved_data = False
-        
-        return True
+        try:
+            # CSVファイルを読み込む
+            csv_path = "data/inspection_data.csv"
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            
+            # 編集対象の行を取得
+            row_index = st.session_state.editing_saved_index
+            
+            # 更新データの作成
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # データフレームの更新
+            df.loc[row_index, '点検日'] = inspection_date.strftime("%Y-%m-%d")
+            df.loc[row_index, '点検者名'] = inspector_name
+            df.loc[row_index, '現場名'] = site_name
+            df.loc[row_index, '棟名'] = building_name
+            df.loc[row_index, '備考'] = remarks
+            df.loc[row_index, '場所'] = st.session_state.temp_location
+            df.loc[row_index, '劣化名'] = st.session_state.temp_deterioration
+            df.loc[row_index, '写真番号'] = st.session_state.temp_photo
+            
+            # 更新履歴情報があれば更新
+            if '最終更新日時' in df.columns:
+                df.loc[row_index, '最終更新日時'] = current_time
+            else:
+                df['最終更新日時'] = None
+                df.loc[row_index, '最終更新日時'] = current_time
+                
+            if '更新者' in df.columns:
+                df.loc[row_index, '更新者'] = inspector_name
+            else:
+                df['更新者'] = None
+                df.loc[row_index, '更新者'] = inspector_name
+                
+            if '更新回数' in df.columns:
+                df.loc[row_index, '更新回数'] = int(df.loc[row_index, '更新回数']) + 1 if pd.notna(df.loc[row_index, '更新回数']) else 1
+            else:
+                df['更新回数'] = 0
+                df.loc[row_index, '更新回数'] = 1
+            
+            # CSVに保存
+            df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+            
+            # 編集モードを終了
+            st.session_state.editing_saved_data = False
+            st.session_state.editing_saved_row = {}
+            st.session_state.editing_saved_index = -1
+            
+            return True
+        except Exception as e:
+            st.error(f"データの更新中にエラーが発生しました: {str(e)}")
+            return False
     return False
 
 # データ保存用ディレクトリの作成
@@ -199,10 +228,30 @@ if not os.path.exists('data'):
 locations, deterioration_types, locations_dict, deteriorations_dict, locations_yomi, deteriorations_yomi = load_master_data()
 
 # タブの作成
-tab_input, tab_view = st.tabs(["点検入力", "データ閲覧"])
+if st.session_state.active_tab == "input":
+    tab_input, tab_view = st.tabs(["点検入力", "データ閲覧"])
+    st.session_state.active_tab = "input"
+else:
+    tab_view, tab_input = st.tabs(["データ閲覧", "点検入力"])
+    st.session_state.active_tab = "view"
 
 with tab_input:
     st.header("点検情報入力")
+    
+    # 保存済みデータ編集モードの場合の表示
+    if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
+        st.info("保存済みデータの編集モードです")
+        
+        # 編集対象のデータを表示
+        row = st.session_state.editing_saved_row
+        st.write(f"編集対象: {row['点検日']} - {row['現場名']} - {row['場所']} - {row['劣化名']}")
+        
+        # キャンセルボタン
+        if st.button("編集をキャンセル", key="cancel_edit"):
+            st.session_state.editing_saved_data = False
+            st.session_state.editing_saved_row = {}
+            st.session_state.editing_saved_index = -1
+            st.experimental_rerun()
     
     # 基本情報セクション
     with st.container():
@@ -210,13 +259,22 @@ with tab_input:
         col1, col2 = st.columns(2)
         
         with col1:
-            inspection_date = st.date_input("点検日", value=datetime.now())
-            inspector_name = st.text_input("点検者名")
+            # 編集モードの場合は保存済みの値を初期値に設定
+            default_date = datetime.strptime(st.session_state.editing_saved_row['点検日'], "%Y-%m-%d").date() if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '点検日' in st.session_state.editing_saved_row else datetime.now()
+            inspection_date = st.date_input("点検日", value=default_date)
+            
+            default_inspector = st.session_state.editing_saved_row['点検者名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '点検者名' in st.session_state.editing_saved_row else ""
+            inspector_name = st.text_input("点検者名", value=default_inspector)
         
         with col2:
-            site_name = st.text_input("現場名")
-            building_name = st.text_input("棟名")
-            remarks = st.text_area("備考")
+            default_site = st.session_state.editing_saved_row['現場名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '現場名' in st.session_state.editing_saved_row else ""
+            site_name = st.text_input("現場名", value=default_site)
+            
+            default_building = st.session_state.editing_saved_row['棟名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '棟名' in st.session_state.editing_saved_row else ""
+            building_name = st.text_input("棟名", value=default_building)
+            
+            default_remarks = st.session_state.editing_saved_row['備考'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '備考' in st.session_state.editing_saved_row else ""
+            remarks = st.text_area("備考", value=default_remarks)
 
     # 劣化内容セクション
     with st.container():
@@ -232,10 +290,12 @@ with tab_input:
             st.session_state.form_submitted = False
         
         with col1:
+            # 編集モードの場合は保存済みの値を初期値に設定
+            default_location = st.session_state.editing_saved_row['場所'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '場所' in st.session_state.editing_saved_row else st.session_state.editing_location
             location = st.text_input(
                 "場所",
                 key="location_input",
-                value=st.session_state.editing_location if st.session_state.editing_item_index >= 0 else "",
+                value=default_location,
                 help="ひらがなで入力してください（例：いっかい）"
             )
             if location:
@@ -250,10 +310,12 @@ with tab_input:
                         location = selected_location
 
         with col2:
+            # 編集モードの場合は保存済みの値を初期値に設定
+            default_deterioration = st.session_state.editing_saved_row['劣化名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '劣化名' in st.session_state.editing_saved_row else st.session_state.editing_deterioration
             deterioration_name = st.text_input(
                 "劣化名",
                 key="deterioration_input",
-                value=st.session_state.editing_deterioration if st.session_state.editing_item_index >= 0 else "",
+                value=default_deterioration,
                 help="ひらがなで入力してください（例：ひび）"
             )
             if deterioration_name:
@@ -268,10 +330,12 @@ with tab_input:
                         deterioration_name = selected_deterioration
 
         with col3:
+            # 編集モードの場合は保存済みの値を初期値に設定
+            default_photo = st.session_state.editing_saved_row['写真番号'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '写真番号' in st.session_state.editing_saved_row else st.session_state.editing_photo
             photo_number = st.text_input(
                 "写真番号",
                 key="photo_number_input",
-                value=st.session_state.editing_photo if st.session_state.editing_item_index >= 0 else ""
+                value=default_photo
             )
 
         # 一時的に値を保存
@@ -347,56 +411,69 @@ with tab_input:
                 if i < len(st.session_state.inspection_items) - 1:
                     st.markdown("---")
 
-    # 保存ボタン（元の状態に戻す）
+    # 保存ボタン
     if st.button("保存"):
-        # 劣化データを展開して保存用のデータフレームを作成
-        rows = []
-        newly_saved_items = []
-        
-        for item in st.session_state.inspection_items:
-            # 既に保存済みの項目はスキップ
-            item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
-            if item_key in st.session_state.saved_items:
-                continue
-                
-            rows.append({
-                "点検日": inspection_date.strftime("%Y-%m-%d"),
-                "点検者名": inspector_name,
-                "現場名": site_name,
-                "棟名": building_name,
-                "備考": remarks,
-                "劣化番号": item["deterioration_number"],
-                "場所": item["location"],
-                "劣化名": item["deterioration_name"],
-                "写真番号": item["photo_number"]
-            })
-            
-            # 保存済みリストに追加
-            newly_saved_items.append(item_key)
-        
-        # 保存するデータがある場合のみ処理
-        if rows:
-            df_save = pd.DataFrame(rows)
-            
-            csv_path = "data/inspection_data.csv"
-            if os.path.exists(csv_path):
-                df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
-                df_save = pd.concat([df_existing, df_save], ignore_index=True)
-            
-            df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
-            
-            # 保存済みリストを更新
-            st.session_state.saved_items.extend(newly_saved_items)
-            
-            st.success(f"{len(rows)}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+        # 編集モードの場合
+        if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
+            if update_saved_data():
+                st.success("データを更新しました")
+                st.session_state.active_tab = "view"  # データ閲覧タブに切り替え
+                st.experimental_rerun()
         else:
-            st.info("保存するデータがありません。すべての項目は既に保存済みです。")
+            # 既存の新規保存処理
+            # 劣化データを展開して保存用のデータフレームを作成
+            rows = []
+            newly_saved_items = []
+            
+            for item in st.session_state.inspection_items:
+                # 既に保存済みの項目はスキップ
+                item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+                if item_key in st.session_state.saved_items:
+                    continue
+                    
+                rows.append({
+                    "点検日": inspection_date.strftime("%Y-%m-%d"),
+                    "点検者名": inspector_name,
+                    "現場名": site_name,
+                    "棟名": building_name,
+                    "備考": remarks,
+                    "劣化番号": item["deterioration_number"],
+                    "場所": item["location"],
+                    "劣化名": item["deterioration_name"],
+                    "写真番号": item["photo_number"]
+                })
+                
+                # 保存済みリストに追加
+                newly_saved_items.append(item_key)
+            
+            # 保存するデータがある場合のみ処理
+            if rows:
+                df_save = pd.DataFrame(rows)
+                
+                csv_path = "data/inspection_data.csv"
+                if os.path.exists(csv_path):
+                    df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
+                    df_save = pd.concat([df_existing, df_save], ignore_index=True)
+                
+                df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
+                
+                # 保存済みリストを更新
+                st.session_state.saved_items.extend(newly_saved_items)
+                
+                st.success(f"{len(rows)}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+            else:
+                st.info("保存するデータがありません。すべての項目は既に保存済みです。")
 
 with tab_view:
     st.header("データ閲覧")
     
     # 自動更新の設定
-    auto_refresh = st.checkbox("自動更新（10秒ごと）", value=False)
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        auto_refresh = st.checkbox("自動更新（10秒ごと）", value=False)
+    with col2:
+        edit_mode = st.checkbox("編集モード", value=False)
+    
     if auto_refresh:
         st.markdown("""
         <meta http-equiv="refresh" content="10">
@@ -415,7 +492,27 @@ with tab_view:
         # データが存在する場合のみ表示
         if not df.empty:
             st.write(f"合計 {len(df)} 件のデータがあります")
-            st.dataframe(df)
+            
+            # 編集モードの場合は選択列を追加
+            if edit_mode:
+                # 一意のIDを各行に付与（インデックスを使用）
+                df['選択'] = df.index
+                selected_row = st.selectbox(
+                    "編集するデータを選択",
+                    options=df.index,
+                    format_func=lambda i: f"{df.loc[i, '点検日']} - {df.loc[i, '現場名']} - {df.loc[i, '場所']} - {df.loc[i, '劣化名']}"
+                )
+                
+                if st.button("選択したデータを編集"):
+                    # 選択したデータを編集用にセッションに保存
+                    st.session_state.editing_saved_data = True
+                    st.session_state.editing_saved_row = df.loc[selected_row].to_dict()
+                    st.session_state.editing_saved_index = selected_row
+                    st.session_state.active_tab = "input"  # 点検入力タブに切り替え
+                    st.experimental_rerun()
+            
+            # データフレームの表示
+            st.dataframe(df.drop(columns=['選択']) if edit_mode and '選択' in df.columns else df)
             
             # CSVダウンロード
             csv = df.to_csv(index=False, encoding='utf-8-sig')
