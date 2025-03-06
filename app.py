@@ -91,6 +91,8 @@ if 'editing_photo' not in st.session_state:
     st.session_state.editing_photo = ""
 if 'form_submitted' not in st.session_state:
     st.session_state.form_submitted = False
+if 'saved_items' not in st.session_state:
+    st.session_state.saved_items = []
 
 def add_item():
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
@@ -128,8 +130,20 @@ def edit_item(index):
     st.session_state.editing_location = item["location"]
     st.session_state.editing_deterioration = item["deterioration_name"]
     st.session_state.editing_photo = item["photo_number"]
+    
+    # 編集時に保存済みリストから削除
+    item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+    if item_key in st.session_state.saved_items:
+        st.session_state.saved_items.remove(item_key)
 
 def delete_item(index):
+    item = st.session_state.inspection_items[index]
+    
+    # 削除時に保存済みリストから削除
+    item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+    if item_key in st.session_state.saved_items:
+        st.session_state.saved_items.remove(item_key)
+    
     del st.session_state.inspection_items[index]
     # 劣化番号を振り直す
     for i, item in enumerate(st.session_state.inspection_items):
@@ -235,12 +249,32 @@ with tab_input:
         # スマホ表示に最適化したコンパクトなレイアウト
         for i, item in enumerate(st.session_state.inspection_items):
             with st.container():
+                # 保存済みかどうかを判定
+                item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+                is_saved = item_key in st.session_state.saved_items
+                
+                # 保存済み項目は背景色を変える
+                if is_saved:
+                    container_style = """
+                    <style>
+                    .saved-item {
+                        background-color: #e6f3ff;
+                        padding: 5px;
+                        border-radius: 5px;
+                        border-left: 3px solid #1E88E5;
+                    }
+                    </style>
+                    <div class="saved-item">
+                    """
+                    st.markdown(container_style, unsafe_allow_html=True)
+                
                 cols = st.columns([0.6, 0.2, 0.2])
                 
                 # 項目情報を1列目にまとめて表示
                 with cols[0]:
+                    status_badge = "🔵 " if is_saved else ""
                     st.markdown(f"""
-                    **No.{item['deterioration_number']}**: {item['location']} / {item['deterioration_name']} / {item['photo_number']}
+                    {status_badge}**No.{item['deterioration_number']}**: {item['location']} / {item['deterioration_name']} / {item['photo_number']}
                     """)
                 
                 # 編集ボタン
@@ -263,6 +297,10 @@ with tab_input:
                         use_container_width=True
                     )
                 
+                # 保存済み項目のHTMLを閉じる
+                if is_saved:
+                    st.markdown("</div>", unsafe_allow_html=True)
+                
                 # 項目間の区切り線（オプション）
                 if i < len(st.session_state.inspection_items) - 1:
                     st.markdown("---")
@@ -271,7 +309,14 @@ with tab_input:
     if st.button("保存"):
         # 劣化データを展開して保存用のデータフレームを作成
         rows = []
+        newly_saved_items = []
+        
         for item in st.session_state.inspection_items:
+            # 既に保存済みの項目はスキップ
+            item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+            if item_key in st.session_state.saved_items:
+                continue
+                
             rows.append({
                 "点検日": inspection_date.strftime("%Y-%m-%d"),
                 "点検者名": inspector_name,
@@ -282,16 +327,27 @@ with tab_input:
                 "劣化名": item["deterioration_name"],
                 "写真番号": item["photo_number"]
             })
+            
+            # 保存済みリストに追加
+            newly_saved_items.append(item_key)
         
-        df_save = pd.DataFrame(rows)
-        
-        csv_path = "data/inspection_data.csv"
-        if os.path.exists(csv_path):
-            df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
-            df_save = pd.concat([df_existing, df_save], ignore_index=True)
-        
-        df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        st.success("データを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+        # 保存するデータがある場合のみ処理
+        if rows:
+            df_save = pd.DataFrame(rows)
+            
+            csv_path = "data/inspection_data.csv"
+            if os.path.exists(csv_path):
+                df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
+                df_save = pd.concat([df_existing, df_save], ignore_index=True)
+            
+            df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
+            
+            # 保存済みリストを更新
+            st.session_state.saved_items.extend(newly_saved_items)
+            
+            st.success(f"{len(rows)}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+        else:
+            st.info("保存するデータがありません。すべての項目は既に保存済みです。")
 
 with tab_view:
     st.header("データ閲覧")
