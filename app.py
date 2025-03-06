@@ -650,20 +650,24 @@ with tab_view:
                 
                 with col2:
                     if st.button("選択した行を削除", key="delete_selected_rows"):
-                        if 'selected_rows' in st.session_state and st.session_state.selected_rows:
-                            # 選択された行のインデックスを取得
-                            # Streamlitの行選択は辞書形式で返される
-                            selected_indices = list(st.session_state.selected_rows.keys())
-                            if selected_indices:
-                                # 選択された行を削除
-                                df = df.drop(index=selected_indices).reset_index(drop=True)
-                                st.success(f"{len(selected_indices)}行を削除しました")
-                                # 選択状態をリセット
-                                st.session_state.selected_rows = {}
+                        # 古いバージョンのStreamlitでは行選択機能が制限されているため、
+                        # 行番号を直接入力して削除する方法に変更
+                        row_to_delete = st.number_input(
+                            "削除する行番号を入力してください（0から始まる行番号）",
+                            min_value=0,
+                            max_value=len(df)-1 if not df.empty else 0,
+                            value=0,
+                            step=1,
+                            key="row_to_delete"
+                        )
+                        
+                        if st.button("この行を削除", key="confirm_delete"):
+                            if 0 <= row_to_delete < len(df):
+                                # 指定された行を削除
+                                df = df.drop(index=row_to_delete).reset_index(drop=True)
+                                st.success(f"行番号 {row_to_delete} を削除しました")
                             else:
-                                st.warning("削除する行が選択されていません")
-                        else:
-                            st.warning("削除する行を選択してください（行をクリックして選択）")
+                                st.warning("有効な行番号を入力してください")
                 
                 # データエディタの表示
                 try:
@@ -679,12 +683,9 @@ with tab_view:
                             # NaN値を0に変換してから整数型に
                             df[col] = df[col].fillna(0).astype(int)
                     
-                    # 行選択時のコールバック関数
-                    def on_select(selection):
-                        st.session_state.selected_rows = selection
-                    
                     # まずst.data_editorを試す
                     try:
+                        # 古いバージョンのStreamlitでも動作するように設定を簡略化
                         edited_df = st.data_editor(
                             df,
                             key="data_editor",
@@ -696,9 +697,8 @@ with tab_view:
                                 # 点検日は文字列として扱う（DateColumnではなくTextColumnを使用）
                                 "点検日": st.column_config.TextColumn("点検日", help="YYYY-MM-DD形式で入力してください"),
                                 "劣化番号": st.column_config.NumberColumn("劣化番号", help="自動的に割り当てられる番号です"),
-                            },
-                            on_selection_change=on_select,  # 行選択時のコールバック
-                            selection_type="row"  # 行選択を有効化
+                            }
+                            # 古いバージョンでは行選択パラメータを使用しない
                         )
                     except AttributeError:
                         # st.data_editorが存在しない場合は代替手段を使用
