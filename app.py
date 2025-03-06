@@ -76,7 +76,7 @@ def get_suggestions(input_text, options, yomi_options, mapping_dict):
     
     return suggestions
 
-# セッション状態の初期化
+# セッション状態の初期化（元の状態に戻す）
 if 'inspection_items' not in st.session_state:
     st.session_state.inspection_items = []
 if 'current_deterioration_number' not in st.session_state:
@@ -96,11 +96,17 @@ if 'saved_items' not in st.session_state:
 
 def add_item():
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         new_item = {
             "deterioration_number": st.session_state.current_deterioration_number if st.session_state.editing_item_index < 0 else st.session_state.inspection_items[st.session_state.editing_item_index]["deterioration_number"],
             "location": st.session_state.temp_location,
             "deterioration_name": st.session_state.temp_deterioration,
-            "photo_number": st.session_state.temp_photo
+            "photo_number": st.session_state.temp_photo,
+            "作成日時": current_time,
+            "最終更新日時": current_time,
+            "更新者": st.session_state.inspector_name if 'inspector_name' in st.session_state else "",
+            "更新回数": 0
         }
         
         if st.session_state.editing_item_index >= 0:
@@ -150,6 +156,41 @@ def delete_item(index):
         item["deterioration_number"] = i + 1
     st.session_state.current_deterioration_number = len(st.session_state.inspection_items) + 1
 
+def update_saved_data():
+    if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
+        # CSVファイルを読み込む
+        csv_path = "data/inspection_data.csv"
+        df = pd.read_csv(csv_path, encoding='utf-8-sig')
+        
+        # 編集対象の行を取得
+        row_index = st.session_state.editing_saved_index
+        row = st.session_state.editing_saved_row
+        
+        # 更新データの作成
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        update_count = int(row.get('更新回数', 0)) + 1
+        
+        # データフレームの更新
+        df.loc[row_index, '点検日'] = inspection_date.strftime("%Y-%m-%d")
+        df.loc[row_index, '点検者名'] = inspector_name
+        df.loc[row_index, '現場ID'] = site_id
+        df.loc[row_index, '備考'] = remarks
+        df.loc[row_index, '場所'] = st.session_state.temp_location
+        df.loc[row_index, '劣化名'] = st.session_state.temp_deterioration
+        df.loc[row_index, '写真番号'] = st.session_state.temp_photo
+        df.loc[row_index, '最終更新日時'] = current_time
+        df.loc[row_index, '更新者'] = inspector_name
+        df.loc[row_index, '更新回数'] = update_count
+        
+        # CSVに保存
+        df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+        
+        # 編集モードを終了
+        st.session_state.editing_saved_data = False
+        
+        return True
+    return False
+
 # データ保存用ディレクトリの作成
 if not os.path.exists('data'):
     os.makedirs('data')
@@ -173,7 +214,8 @@ with tab_input:
             inspector_name = st.text_input("点検者名")
         
         with col2:
-            site_id = st.text_input("現場ID")
+            site_name = st.text_input("現場名")
+            building_name = st.text_input("棟名")
             remarks = st.text_area("備考")
 
     # 劣化内容セクション
@@ -305,7 +347,7 @@ with tab_input:
                 if i < len(st.session_state.inspection_items) - 1:
                     st.markdown("---")
 
-    # 保存ボタン
+    # 保存ボタン（元の状態に戻す）
     if st.button("保存"):
         # 劣化データを展開して保存用のデータフレームを作成
         rows = []
@@ -320,7 +362,8 @@ with tab_input:
             rows.append({
                 "点検日": inspection_date.strftime("%Y-%m-%d"),
                 "点検者名": inspector_name,
-                "現場ID": site_id,
+                "現場名": site_name,
+                "棟名": building_name,
                 "備考": remarks,
                 "劣化番号": item["deterioration_number"],
                 "場所": item["location"],
@@ -364,7 +407,7 @@ with tab_view:
         df = pd.read_csv(csv_path, encoding='utf-8-sig')
         
         # 検索フィルター
-        search_term = st.text_input("検索（点検日、現場ID、点検者名など）")
+        search_term = st.text_input("検索（点検日、現場名、点検者名など）")
         if search_term:
             mask = df.astype(str).apply(lambda x: x.str.contains(search_term, case=False)).any(axis=1)
             df = df[mask]
