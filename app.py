@@ -127,14 +127,14 @@ def add_item():
             "deterioration_number": deterioration_number,
             "location": st.session_state.temp_location,
             "deterioration_name": st.session_state.temp_deterioration,
-            "photo_number": st.session_state.temp_photo,
-            "現場名": st.session_state.current_site_name if 'current_site_name' in st.session_state else "",
-            "棟名": st.session_state.current_building_name if 'current_building_name' in st.session_state else "",
-            "作成日時": current_time,
-            "最終更新日時": current_time,
-            "更新者": st.session_state.inspector_name if 'inspector_name' in st.session_state else "",
-            "更新回数": 0
+            "photo_number": st.session_state.temp_photo
         }
+        
+        # セッション状態に現場名と棟名が存在する場合のみ追加
+        if 'current_site_name' in st.session_state:
+            new_item["現場名"] = st.session_state.current_site_name
+        if 'current_building_name' in st.session_state:
+            new_item["棟名"] = st.session_state.current_building_name
         
         if st.session_state.editing_item_index >= 0:
             # 編集モードの場合は既存のアイテムを更新
@@ -302,9 +302,18 @@ with tab_input:
                         try:
                             df = pd.read_csv(csv_path, encoding='utf-8-sig')
                             
-                            # 現場名と棟名でフィルタリング
-                            filtered_df = df[(df['現場名'] == st.session_state.current_site_name) & 
-                                            (df['棟名'] == building_name)]
+                            # 現場名と棟名の列が存在するか確認
+                            has_site_column = '現場名' in df.columns
+                            has_building_column = '棟名' in df.columns
+                            
+                            # 両方の列が存在する場合のみフィルタリングを行う
+                            if has_site_column and has_building_column:
+                                # 現場名と棟名でフィルタリング
+                                filtered_df = df[(df['現場名'] == st.session_state.current_site_name) & 
+                                                (df['棟名'] == building_name)]
+                            else:
+                                # 列が存在しない場合は空のデータフレームを使用
+                                filtered_df = pd.DataFrame()
                             
                             if not filtered_df.empty:
                                 # 既存の入力項目をクリア（編集モードでない場合のみ）
@@ -553,25 +562,28 @@ with tab_input:
                     
                     # 現場名と棟名の組み合わせごとに劣化番号を確認し、必要に応じて調整
                     for i, row in enumerate(rows):
-                        site_name = row["現場名"]
-                        building_name = row["棟名"]
-                        
-                        # 同じ現場名と棟名の既存データをフィルタリング
-                        same_site_building = df_existing[(df_existing["現場名"] == site_name) & (df_existing["棟名"] == building_name)]
-                        
-                        # 既存データがある場合、劣化番号が重複しないように調整
-                        if not same_site_building.empty:
-                            # 既存の最大劣化番号を取得
-                            existing_max_number = same_site_building["劣化番号"].max()
+                        # 現場名と棟名が存在する場合のみ処理
+                        if "現場名" in row and "棟名" in row:
+                            site_name = row["現場名"]
+                            building_name = row["棟名"]
                             
-                            # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
-                            if row["劣化番号"] <= existing_max_number:
-                                # 劣化番号を既存の最大番号+1に設定
-                                df_save.loc[i, "劣化番号"] = existing_max_number + 1
+                            # 同じ現場名と棟名の既存データをフィルタリング
+                            if "現場名" in df_existing.columns and "棟名" in df_existing.columns:
+                                same_site_building = df_existing[(df_existing["現場名"] == site_name) & (df_existing["棟名"] == building_name)]
                                 
-                                # セッション状態の劣化番号も更新
-                                site_building_key = f"{site_name}_{building_name}"
-                                st.session_state.site_building_numbers[site_building_key] = existing_max_number + 2
+                                # 既存データがある場合、劣化番号が重複しないように調整
+                                if not same_site_building.empty:
+                                    # 既存の最大劣化番号を取得
+                                    existing_max_number = same_site_building["劣化番号"].max()
+                                    
+                                    # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
+                                    if row["劣化番号"] <= existing_max_number:
+                                        # 劣化番号を既存の最大番号+1に設定
+                                        df_save.loc[i, "劣化番号"] = existing_max_number + 1
+                                        
+                                        # セッション状態の劣化番号も更新
+                                        site_building_key = f"{site_name}_{building_name}"
+                                        st.session_state.site_building_numbers[site_building_key] = existing_max_number + 2
                     
                     df_save = pd.concat([df_existing, df_save], ignore_index=True)
                 
