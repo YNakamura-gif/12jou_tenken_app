@@ -283,7 +283,7 @@ with tab_input:
             st.session_state.editing_saved_data = False
             st.session_state.editing_saved_row = {}
             st.session_state.editing_saved_index = -1
-            st.experimental_rerun()
+            st.rerun()
     
     # 基本情報セクション
     with st.container():
@@ -457,7 +457,7 @@ with tab_input:
                     # 劣化項目を追加
                     add_item()
                     st.success(f"劣化項目「{location} / {deterioration_name}」を追加しました")
-                    st.experimental_rerun()  # 画面を更新して追加された項目を表示
+                    st.rerun()  # 画面を更新して追加された項目を表示
                 else:
                     st.error("場所と劣化名は必須項目です")
     else:
@@ -534,7 +534,7 @@ with tab_input:
             if update_saved_data():
                 st.success("データを更新しました")
                 st.session_state.active_tab = "view"  # データ閲覧タブに切り替え
-                st.experimental_rerun()
+                st.rerun()
         else:
             # 既存の新規保存処理
             # 劣化データを展開して保存用のデータフレームを作成
@@ -698,7 +698,7 @@ with tab_view:
                         # CSVに保存
                         edited_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
                         st.success("変更を保存しました")
-                        st.experimental_rerun()  # 画面を更新
+                        st.rerun()  # 画面を更新
                     except Exception as e:
                         st.error(f"保存中にエラーが発生しました: {str(e)}")
             else:
