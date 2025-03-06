@@ -652,11 +652,14 @@ with tab_view:
                     if st.button("選択した行を削除", key="delete_selected_rows"):
                         if 'selected_rows' in st.session_state and st.session_state.selected_rows:
                             # 選択された行のインデックスを取得
-                            selected_indices = [row.get('_index') for row in st.session_state.selected_rows if row.get('_index') is not None]
+                            # Streamlitの行選択は辞書形式で返される
+                            selected_indices = list(st.session_state.selected_rows.keys())
                             if selected_indices:
                                 # 選択された行を削除
-                                df = df.drop(selected_indices).reset_index(drop=True)
+                                df = df.drop(index=selected_indices).reset_index(drop=True)
                                 st.success(f"{len(selected_indices)}行を削除しました")
+                                # 選択状態をリセット
+                                st.session_state.selected_rows = {}
                             else:
                                 st.warning("削除する行が選択されていません")
                         else:
@@ -676,6 +679,10 @@ with tab_view:
                             # NaN値を0に変換してから整数型に
                             df[col] = df[col].fillna(0).astype(int)
                     
+                    # 行選択時のコールバック関数
+                    def on_select(selection):
+                        st.session_state.selected_rows = selection
+                    
                     # まずst.data_editorを試す
                     try:
                         edited_df = st.data_editor(
@@ -689,7 +696,9 @@ with tab_view:
                                 # 点検日は文字列として扱う（DateColumnではなくTextColumnを使用）
                                 "点検日": st.column_config.TextColumn("点検日", help="YYYY-MM-DD形式で入力してください"),
                                 "劣化番号": st.column_config.NumberColumn("劣化番号", help="自動的に割り当てられる番号です"),
-                            }
+                            },
+                            on_selection_change=on_select,  # 行選択時のコールバック
+                            selection_type="row"  # 行選択を有効化
                         )
                     except AttributeError:
                         # st.data_editorが存在しない場合は代替手段を使用
