@@ -562,26 +562,6 @@ with tab_view:
                         st.experimental_rerun()  # 画面を更新
                     except Exception as e:
                         st.error(f"保存中にエラーが発生しました: {str(e)}")
-                
-                # 個別データ編集機能も残しておく
-                st.subheader("個別データの詳細編集")
-                st.write("より詳細な編集が必要な場合は、以下から選択してください：")
-                
-                # 一意のIDを各行に付与（インデックスを使用）
-                edited_df['選択'] = edited_df.index
-                selected_row = st.selectbox(
-                    "編集するデータを選択",
-                    options=edited_df.index,
-                    format_func=lambda i: f"{edited_df.loc[i, '点検日']} - {edited_df.loc[i, '現場名']} - {edited_df.loc[i, '場所']} - {edited_df.loc[i, '劣化名']}"
-                )
-                
-                if st.button("選択したデータを詳細編集"):
-                    # 選択したデータを編集用にセッションに保存
-                    st.session_state.editing_saved_data = True
-                    st.session_state.editing_saved_row = edited_df.loc[selected_row].to_dict()
-                    st.session_state.editing_saved_index = selected_row
-                    st.session_state.active_tab = "input"  # 点検入力タブに切り替え
-                    st.experimental_rerun()
             else:
                 # 通常の表示モード（編集不可）
                 st.dataframe(df)
