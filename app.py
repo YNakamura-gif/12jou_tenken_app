@@ -81,6 +81,8 @@ if 'inspection_items' not in st.session_state:
     st.session_state.inspection_items = []
 if 'current_deterioration_number' not in st.session_state:
     st.session_state.current_deterioration_number = 1
+if 'site_building_numbers' not in st.session_state:
+    st.session_state.site_building_numbers = {}  # 現場名と棟名の組み合わせごとの劣化番号を管理
 if 'editing_item_index' not in st.session_state:
     st.session_state.editing_item_index = -1
 if 'editing_location' not in st.session_state:
@@ -106,8 +108,23 @@ def add_item():
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # 現場名と棟名の組み合わせキーを作成
+        site_building_key = f"{st.session_state.current_site_name}_{st.session_state.current_building_name}" if ('current_site_name' in st.session_state and 'current_building_name' in st.session_state) else "default"
+        
+        # 編集モードでない場合は、現場名と棟名の組み合わせごとの劣化番号を使用
+        if st.session_state.editing_item_index < 0:
+            # 現場名と棟名の組み合わせに対する劣化番号を取得または初期化
+            if site_building_key not in st.session_state.site_building_numbers:
+                st.session_state.site_building_numbers[site_building_key] = 1
+            deterioration_number = st.session_state.site_building_numbers[site_building_key]
+            # 次の劣化番号を設定
+            st.session_state.site_building_numbers[site_building_key] += 1
+        else:
+            # 編集モードの場合は既存の劣化番号を使用
+            deterioration_number = st.session_state.inspection_items[st.session_state.editing_item_index]["deterioration_number"]
+        
         new_item = {
-            "deterioration_number": st.session_state.current_deterioration_number if st.session_state.editing_item_index < 0 else st.session_state.inspection_items[st.session_state.editing_item_index]["deterioration_number"],
+            "deterioration_number": deterioration_number,
             "location": st.session_state.temp_location,
             "deterioration_name": st.session_state.temp_deterioration,
             "photo_number": st.session_state.temp_photo,
@@ -130,7 +147,6 @@ def add_item():
         else:
             # 新規追加モード
             st.session_state.inspection_items.append(new_item)
-            st.session_state.current_deterioration_number += 1
         
         # 入力欄をクリア
         st.session_state.temp_location = ""
@@ -315,9 +331,12 @@ with tab_input:
                                     st.session_state.inspection_items = []
                                     st.session_state.saved_items = []
                                     
+                                    # 現場名と棟名の組み合わせキーを作成
+                                    site_building_key = f"{st.session_state.current_site_name}_{building_name}"
+                                    
                                     # 最大の劣化番号を取得して次の番号を設定
                                     max_deterioration_number = filtered_df['劣化番号'].max()
-                                    st.session_state.current_deterioration_number = max_deterioration_number + 1
+                                    st.session_state.site_building_numbers[site_building_key] = max_deterioration_number + 1
                                     
                                     # 劣化項目を追加
                                     for _, row in filtered_df.iterrows():
@@ -541,6 +560,29 @@ with tab_input:
                 csv_path = "data/inspection_data.csv"
                 if os.path.exists(csv_path):
                     df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
+                    
+                    # 現場名と棟名の組み合わせごとに劣化番号を確認し、必要に応じて調整
+                    for i, row in enumerate(rows):
+                        site_name = row["現場名"]
+                        building_name = row["棟名"]
+                        
+                        # 同じ現場名と棟名の既存データをフィルタリング
+                        same_site_building = df_existing[(df_existing["現場名"] == site_name) & (df_existing["棟名"] == building_name)]
+                        
+                        # 既存データがある場合、劣化番号が重複しないように調整
+                        if not same_site_building.empty:
+                            # 既存の最大劣化番号を取得
+                            existing_max_number = same_site_building["劣化番号"].max()
+                            
+                            # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
+                            if row["劣化番号"] <= existing_max_number:
+                                # 劣化番号を既存の最大番号+1に設定
+                                df_save.loc[i, "劣化番号"] = existing_max_number + 1
+                                
+                                # セッション状態の劣化番号も更新
+                                site_building_key = f"{site_name}_{building_name}"
+                                st.session_state.site_building_numbers[site_building_key] = existing_max_number + 2
+                    
                     df_save = pd.concat([df_existing, df_save], ignore_index=True)
                 
                 df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
