@@ -127,14 +127,10 @@ def add_item():
             "deterioration_number": deterioration_number,
             "location": st.session_state.temp_location,
             "deterioration_name": st.session_state.temp_deterioration,
-            "photo_number": st.session_state.temp_photo
+            "photo_number": st.session_state.temp_photo,
+            "現場名": st.session_state.current_site_name if 'current_site_name' in st.session_state else "",
+            "棟名": st.session_state.current_building_name if 'current_building_name' in st.session_state else ""
         }
-        
-        # セッション状態に現場名と棟名が存在する場合のみ追加
-        if 'current_site_name' in st.session_state:
-            new_item["現場名"] = st.session_state.current_site_name
-        if 'current_building_name' in st.session_state:
-            new_item["棟名"] = st.session_state.current_building_name
         
         if st.session_state.editing_item_index >= 0:
             # 編集モードの場合は既存のアイテムを更新
@@ -545,6 +541,8 @@ with tab_input:
                 rows.append({
                     "点検日": inspection_date.strftime("%Y-%m-%d"),
                     "点検者名": inspector_name,
+                    "現場名": site_name,
+                    "棟名": building_name,
                     "劣化番号": item["deterioration_number"],
                     "場所": item["location"],
                     "劣化名": item["deterioration_name"],
