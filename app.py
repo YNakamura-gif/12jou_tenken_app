@@ -686,7 +686,8 @@ with tab_view:
                             disabled=["劣化番号"],  # 劣化番号は編集不可
                             hide_index=False,  # インデックスを表示
                             column_config={
-                                "点検日": st.column_config.DateColumn("点検日", format="YYYY-MM-DD"),
+                                # 点検日は文字列として扱う（DateColumnではなくTextColumnを使用）
+                                "点検日": st.column_config.TextColumn("点検日", help="YYYY-MM-DD形式で入力してください"),
                                 "劣化番号": st.column_config.NumberColumn("劣化番号", help="自動的に割り当てられる番号です"),
                             }
                         )
