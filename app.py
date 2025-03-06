@@ -579,6 +579,12 @@ with tab_input:
                 st.session_state.saved_items.extend(newly_saved_items)
                 
                 st.success(f"{len(rows)}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+                
+                # 保存後にフォームをリセットして新規入力を可能にする
+                st.session_state.form_submitted = True
+                st.session_state.temp_location = ""
+                st.session_state.temp_deterioration = ""
+                st.session_state.temp_photo = ""
             else:
                 st.info("保存するデータがありません。すべての項目は既に保存済みです。")
 
