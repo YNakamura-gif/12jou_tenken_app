@@ -634,28 +634,61 @@ with tab_view:
             
             # 編集モードの場合
             if edit_mode:
-                st.info("テーブル内のセルをタップして直接編集できます。編集後は「変更を保存」ボタンをクリックしてください。")
+                st.info("テーブル内のセルをタップして直接編集できます。行の追加・削除も可能です。編集後は「変更を保存」ボタンをクリックしてください。")
                 
-                # データ型を適切に変換
-                # 日付列を文字列として扱う
-                if '点検日' in df.columns:
-                    df['点検日'] = df['点検日'].astype(str)
+                # 行の操作ボタン
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("新しい行を追加", key="add_new_row"):
+                        # 新しい空の行を追加
+                        new_row = {col: "" for col in df.columns}
+                        # 必須フィールドに初期値を設定
+                        new_row['点検日'] = datetime.now().strftime("%Y-%m-%d")
+                        new_row['劣化番号'] = df['劣化番号'].max() + 1 if not df.empty else 1
+                        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                        st.success("新しい行を追加しました。内容を編集してください。")
                 
-                # 数値列を適切に変換
-                numeric_cols = ['劣化番号', '更新回数']
-                for col in numeric_cols:
-                    if col in df.columns:
-                        # NaN値を0に変換してから整数型に
-                        df[col] = df[col].fillna(0).astype(int)
+                with col2:
+                    if st.button("選択した行を削除", key="delete_selected_rows"):
+                        if 'selected_rows' in st.session_state and st.session_state.selected_rows:
+                            # 選択された行のインデックスを取得
+                            selected_indices = [row.get('_index') for row in st.session_state.selected_rows if row.get('_index') is not None]
+                            if selected_indices:
+                                # 選択された行を削除
+                                df = df.drop(selected_indices).reset_index(drop=True)
+                                st.success(f"{len(selected_indices)}行を削除しました")
+                            else:
+                                st.warning("削除する行が選択されていません")
+                        else:
+                            st.warning("削除する行を選択してください（行をクリックして選択）")
                 
+                # データエディタの表示
                 try:
+                    # データ型を適切に変換
+                    # 日付列を文字列として扱う
+                    if '点検日' in df.columns:
+                        df['点検日'] = df['点検日'].astype(str)
+                    
+                    # 数値列を適切に変換
+                    numeric_cols = ['劣化番号', '更新回数']
+                    for col in numeric_cols:
+                        if col in df.columns:
+                            # NaN値を0に変換してから整数型に
+                            df[col] = df[col].fillna(0).astype(int)
+                    
                     # まずst.data_editorを試す
                     try:
                         edited_df = st.data_editor(
                             df,
                             key="data_editor",
                             use_container_width=True,
-                            disabled=["劣化番号"]  # 劣化番号は編集不可
+                            num_rows="dynamic",  # 動的な行数
+                            disabled=["劣化番号"],  # 劣化番号は編集不可
+                            hide_index=False,  # インデックスを表示
+                            column_config={
+                                "点検日": st.column_config.DateColumn("点検日", format="YYYY-MM-DD"),
+                                "劣化番号": st.column_config.NumberColumn("劣化番号", help="自動的に割り当てられる番号です"),
+                            }
                         )
                     except AttributeError:
                         # st.data_editorが存在しない場合は代替手段を使用
@@ -666,10 +699,6 @@ with tab_view:
                     st.error(f"データエディタでエラーが発生しました: {str(e)}")
                     st.warning("代替の編集方法を使用します。")
                     
-                    # 代替手段: 通常のデータフレーム表示と個別編集
-                    st.dataframe(df)
-                    edited_df = df.copy()
-                
                 # 変更を保存するボタン
                 if st.button("変更を保存", key="save_table_edits"):
                     try:
