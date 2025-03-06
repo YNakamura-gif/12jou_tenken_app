@@ -352,6 +352,13 @@ with tab_input:
 with tab_view:
     st.header("データ閲覧")
     
+    # 自動更新の設定
+    auto_refresh = st.checkbox("自動更新（10秒ごと）", value=False)
+    if auto_refresh:
+        st.markdown("""
+        <meta http-equiv="refresh" content="10">
+        """, unsafe_allow_html=True)
+    
     csv_path = "data/inspection_data.csv"
     if os.path.exists(csv_path):
         df = pd.read_csv(csv_path, encoding='utf-8-sig')
@@ -362,10 +369,12 @@ with tab_view:
             mask = df.astype(str).apply(lambda x: x.str.contains(search_term, case=False)).any(axis=1)
             df = df[mask]
         
-        st.dataframe(df)
-        
-        # CSVダウンロード
+        # データが存在する場合のみ表示
         if not df.empty:
+            st.write(f"合計 {len(df)} 件のデータがあります")
+            st.dataframe(df)
+            
+            # CSVダウンロード
             csv = df.to_csv(index=False, encoding='utf-8-sig')
             st.download_button(
                 label="CSVダウンロード",
@@ -373,5 +382,7 @@ with tab_view:
                 file_name="inspection_data.csv",
                 mime="text/csv"
             )
+        else:
+            st.info("検索条件に一致するデータがありません")
     else:
         st.info("保存されたデータがありません")
