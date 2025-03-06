@@ -497,20 +497,33 @@ with tab_view:
             if edit_mode:
                 st.info("テーブル内のセルをタップして直接編集できます。編集後は「変更を保存」ボタンをクリックしてください。")
                 
-                # 編集可能なデータエディタを表示
-                edited_df = st.data_editor(
-                    df,
-                    num_rows="dynamic",
-                    key="data_editor",
-                    use_container_width=True,
-                    column_config={
-                        "点検日": st.column_config.DateColumn(
-                            "点検日",
-                            format="YYYY-MM-DD",
-                        ),
-                    },
-                    disabled=["劣化番号"]  # 劣化番号は編集不可
-                )
+                # データ型を適切に変換
+                # 日付列を文字列として扱う
+                if '点検日' in df.columns:
+                    df['点検日'] = df['点検日'].astype(str)
+                
+                # 数値列を適切に変換
+                numeric_cols = ['劣化番号', '更新回数']
+                for col in numeric_cols:
+                    if col in df.columns:
+                        # NaN値を0に変換してから整数型に
+                        df[col] = df[col].fillna(0).astype(int)
+                
+                try:
+                    # 編集可能なデータエディタを表示（experimental版を使用）
+                    edited_df = st.experimental_data_editor(
+                        df,
+                        key="data_editor",
+                        use_container_width=True,
+                        disabled=["劣化番号"]  # 劣化番号は編集不可
+                    )
+                except Exception as e:
+                    st.error(f"データエディタでエラーが発生しました: {str(e)}")
+                    st.warning("代替の編集方法を使用します。")
+                    
+                    # 代替手段: 通常のデータフレーム表示と個別編集
+                    st.dataframe(df)
+                    edited_df = df.copy()
                 
                 # 変更を保存するボタン
                 if st.button("変更を保存", key="save_table_edits"):
