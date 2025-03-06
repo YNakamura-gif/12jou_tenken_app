@@ -291,11 +291,7 @@ with tab_input:
             df_save = pd.concat([df_existing, df_save], ignore_index=True)
         
         df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
-        st.success("データを保存しました")
-        
-        # 入力項目のクリア
-        st.session_state.inspection_items = []
-        st.session_state.current_deterioration_number = 1
+        st.success("データを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
 
 with tab_view:
     st.header("データ閲覧")
