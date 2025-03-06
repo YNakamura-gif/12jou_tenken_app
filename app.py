@@ -296,9 +296,65 @@ with tab_input:
             # 棟名が入力されたら、その値をセッションに保存
             if building_name:
                 st.session_state.current_building_name = building_name
+                
+                # 現場名と棟名が両方入力されている場合、登録済みの劣化項目を読み込む
+                if 'current_site_name' in st.session_state and st.session_state.current_site_name:
+                    # 既存のデータを読み込む
+                    csv_path = "data/inspection_data.csv"
+                    if os.path.exists(csv_path):
+                        try:
+                            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+                            
+                            # 現場名と棟名でフィルタリング
+                            filtered_df = df[(df['現場名'] == st.session_state.current_site_name) & 
+                                            (df['棟名'] == building_name)]
+                            
+                            if not filtered_df.empty:
+                                # 既存の入力項目をクリア（編集モードでない場合のみ）
+                                if not ('editing_saved_data' in st.session_state and st.session_state.editing_saved_data):
+                                    st.session_state.inspection_items = []
+                                    st.session_state.saved_items = []
+                                    
+                                    # 最大の劣化番号を取得して次の番号を設定
+                                    max_deterioration_number = filtered_df['劣化番号'].max()
+                                    st.session_state.current_deterioration_number = max_deterioration_number + 1
+                                    
+                                    # 劣化項目を追加
+                                    for _, row in filtered_df.iterrows():
+                                        item = {
+                                            "deterioration_number": row['劣化番号'],
+                                            "location": row['場所'],
+                                            "deterioration_name": row['劣化名'],
+                                            "photo_number": row['写真番号'],
+                                            "現場名": row['現場名'],
+                                            "棟名": row['棟名'],
+                                            "作成日時": row['最終更新日時'] if '最終更新日時' in row else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            "最終更新日時": row['最終更新日時'] if '最終更新日時' in row else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            "更新者": row['更新者'] if '更新者' in row else "",
+                                            "更新回数": row['更新回数'] if '更新回数' in row else 0
+                                        }
+                                        st.session_state.inspection_items.append(item)
+                                        
+                                        # 保存済みリストに追加
+                                        item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+                                        st.session_state.saved_items.append(item_key)
+                                    
+                                    # 読み込み完了メッセージ
+                                    st.session_state.items_loaded = True
+                                    st.session_state.loaded_items_count = len(filtered_df)
+                                    st.session_state.loaded_site_name = st.session_state.current_site_name
+                                    st.session_state.loaded_building_name = building_name
+                        except Exception as e:
+                            st.error(f"データの読み込み中にエラーが発生しました: {str(e)}")
             
             default_remarks = st.session_state.editing_saved_row['備考'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '備考' in st.session_state.editing_saved_row else ""
             remarks = st.text_area("備考", value=default_remarks)
+
+    # 劣化項目が読み込まれた場合のメッセージを表示
+    if 'items_loaded' in st.session_state and st.session_state.items_loaded:
+        st.success(f"現場名「{st.session_state.loaded_site_name}」、棟名「{st.session_state.loaded_building_name}」の登録済み劣化項目（{st.session_state.loaded_items_count}件）を読み込みました。")
+        # メッセージは一度だけ表示
+        st.session_state.items_loaded = False
 
     # 現場名と棟名が両方入力されている場合のみ劣化内容セクションを表示
     if ('current_site_name' in st.session_state and st.session_state.current_site_name) and ('current_building_name' in st.session_state and st.session_state.current_building_name):
