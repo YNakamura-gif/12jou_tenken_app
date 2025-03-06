@@ -449,8 +449,17 @@ with tab_input:
 
             # 編集モード時のボタンテキストを変更
             button_text = "更新" if st.session_state.editing_item_index >= 0 else "劣化項目を追加"
-            if st.button(button_text, on_click=add_item):
-                pass  # 実際の処理はコールバック関数で行う
+            
+            # ボタンクリック時の処理を直接実行するように変更
+            if st.button(button_text, key="add_deterioration_button"):
+                # 入力値が空でないか確認
+                if location and deterioration_name:
+                    # 劣化項目を追加
+                    add_item()
+                    st.success(f"劣化項目「{location} / {deterioration_name}」を追加しました")
+                    st.experimental_rerun()  # 画面を更新して追加された項目を表示
+                else:
+                    st.error("場所と劣化名は必須項目です")
     else:
         # 現場名と棟名が入力されていない場合のメッセージ
         st.warning("劣化情報を入力するには、まず「現場名」と「棟名」を入力してください。")
