@@ -202,7 +202,6 @@ def update_saved_data():
             inspector_name = st.session_state.inspector_name if 'inspector_name' in st.session_state else ""
             site_name = st.session_state.current_site_name if 'current_site_name' in st.session_state else ""
             building_name = st.session_state.current_building_name if 'current_building_name' in st.session_state else ""
-            remarks = st.session_state.remarks if 'remarks' in st.session_state else ""
             
             # 劣化情報の更新
             location = st.session_state.temp_location if 'temp_location' in st.session_state else ""
@@ -214,29 +213,11 @@ def update_saved_data():
             df.loc[row_index, '点検者名'] = inspector_name
             df.loc[row_index, '現場名'] = site_name
             df.loc[row_index, '棟名'] = building_name
-            df.loc[row_index, '備考'] = remarks
             df.loc[row_index, '場所'] = location
             df.loc[row_index, '劣化名'] = deterioration_name
             df.loc[row_index, '写真番号'] = photo_number
             
-            # 更新履歴情報があれば更新
-            if '最終更新日時' in df.columns:
-                df.loc[row_index, '最終更新日時'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                df['最終更新日時'] = None
-                df.loc[row_index, '最終更新日時'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-            if '更新者' in df.columns:
-                df.loc[row_index, '更新者'] = inspector_name
-            else:
-                df['更新者'] = None
-                df.loc[row_index, '更新者'] = inspector_name
-                
-            if '更新回数' in df.columns:
-                df.loc[row_index, '更新回数'] = int(df.loc[row_index, '更新回数']) + 1 if pd.notna(df.loc[row_index, '更新回数']) else 1
-            else:
-                df['更新回数'] = 0
-                df.loc[row_index, '更新回数'] = 1
+            # 更新履歴情報は追加しない
             
             # CSVに保存
             df.to_csv(csv_path, index=False, encoding='utf-8-sig')
@@ -656,7 +637,7 @@ with tab_view:
                         df['点検日'] = df['点検日'].astype(str)
                     
                     # 数値列を適切に変換
-                    numeric_cols = ['劣化番号', '更新回数']
+                    numeric_cols = ['劣化番号']
                     for col in numeric_cols:
                         if col in df.columns:
                             # NaN値を0に変換してから整数型に
@@ -694,24 +675,8 @@ with tab_view:
                         # 更新情報を追加
                         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # 更新履歴情報の列がなければ追加
-                        if '最終更新日時' not in edited_df.columns:
-                            edited_df['最終更新日時'] = None
-                        if '更新者' not in edited_df.columns:
-                            edited_df['更新者'] = None
-                        if '更新回数' not in edited_df.columns:
-                            edited_df['更新回数'] = 0
-                        
-                        # 変更された行を特定して更新情報を設定
-                        for idx in edited_df.index:
-                            edited_df.at[idx, '最終更新日時'] = current_time
-                            # 点検者名があれば更新者として使用、なければ「不明」
-                            edited_df.at[idx, '更新者'] = edited_df.at[idx, '点検者名'] if pd.notna(edited_df.at[idx, '点検者名']) else "不明"
-                            # 更新回数を増やす
-                            if pd.notna(edited_df.at[idx, '更新回数']):
-                                edited_df.at[idx, '更新回数'] = int(edited_df.at[idx, '更新回数']) + 1
-                            else:
-                                edited_df.at[idx, '更新回数'] = 1
+                        # 更新履歴情報の列は追加しない
+                        # 変更された行を特定して保存
                         
                         # CSVに保存
                         edited_df.to_csv(csv_path, index=False, encoding='utf-8-sig')
