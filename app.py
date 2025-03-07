@@ -103,8 +103,11 @@ if 'editing_saved_index' not in st.session_state:
     st.session_state.editing_saved_index = -1
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "input"
+if 'form_key' not in st.session_state:
+    st.session_state.form_key = 0  # フォームの再描画用キー
 
 def add_item():
+    """劣化項目を追加する関数"""
     if 'temp_location' in st.session_state and 'temp_deterioration' in st.session_state and 'temp_photo' in st.session_state:
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -129,7 +132,11 @@ def add_item():
             "deterioration_name": st.session_state.temp_deterioration,
             "photo_number": st.session_state.temp_photo,
             "現場名": st.session_state.current_site_name if 'current_site_name' in st.session_state else "",
-            "棟名": st.session_state.current_building_name if 'current_building_name' in st.session_state else ""
+            "棟名": st.session_state.current_building_name if 'current_building_name' in st.session_state else "",
+            "作成日時": current_time,
+            "最終更新日時": current_time,
+            "更新者": "",
+            "更新回数": 0
         }
         
         if st.session_state.editing_item_index >= 0:
@@ -149,10 +156,31 @@ def add_item():
         st.session_state.temp_deterioration = ""
         st.session_state.temp_photo = ""
         
-        # フォーム送信フラグを設定
-        st.session_state.form_submitted = True
+        # フォームキーを更新してフォームをリセット
+        st.session_state.form_key += 1
+        
+        return True
+    return False
+
+# フォーム送信ハンドラー
+def handle_form_submit():
+    """フォーム送信時の処理"""
+    if st.session_state.location_input and st.session_state.deterioration_input:
+        # 一時的に値を保存
+        st.session_state.temp_location = st.session_state.location_input
+        st.session_state.temp_deterioration = st.session_state.deterioration_input
+        st.session_state.temp_photo = st.session_state.photo_number_input
+        
+        # 劣化項目を追加
+        if add_item():
+            st.session_state.form_submitted = True
+            return True
+    else:
+        st.error("場所と劣化名は必須項目です")
+    return False
 
 def edit_item(index):
+    """劣化項目を編集モードにする関数"""
     st.session_state.editing_item_index = index
     item = st.session_state.inspection_items[index]
     st.session_state.editing_location = item["location"]
@@ -165,6 +193,7 @@ def edit_item(index):
         st.session_state.saved_items.remove(item_key)
 
 def delete_item(index):
+    """劣化項目を削除する関数"""
     item = st.session_state.inspection_items[index]
     
     # 削除時に保存済みリストから削除
@@ -179,6 +208,7 @@ def delete_item(index):
     st.session_state.current_deterioration_number = len(st.session_state.inspection_items) + 1
 
 def update_saved_data():
+    """保存済みデータを更新する関数"""
     if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
         try:
             csv_path = "data/inspection_data.csv"
@@ -213,7 +243,15 @@ def update_saved_data():
             df.loc[row_index, '劣化名'] = deterioration_name
             df.loc[row_index, '写真番号'] = photo_number
             
-            # 更新履歴情報は追加しない
+            # 更新情報を追加
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if '最終更新日時' in df.columns:
+                df.loc[row_index, '最終更新日時'] = current_time
+            if '更新者' in df.columns:
+                df.loc[row_index, '更新者'] = inspector_name
+            if '更新回数' in df.columns:
+                update_count = df.loc[row_index, '更新回数'] if pd.notna(df.loc[row_index, '更新回数']) else 0
+                df.loc[row_index, '更新回数'] = update_count + 1
             
             # CSVに保存
             df.to_csv(csv_path, index=False, encoding='utf-8-sig')
@@ -228,6 +266,82 @@ def update_saved_data():
             st.error(f"データの更新中にエラーが発生しました: {str(e)}")
             return False
     return False
+
+# 保存処理関数
+def save_inspection_data():
+    """劣化データをCSVに保存する関数"""
+    # 保存用のデータを準備
+    rows = []
+    newly_saved_items = []
+    
+    # 点検基本情報を取得
+    inspection_date = st.session_state.get('inspection_date', datetime.now())
+    inspector_name = st.session_state.get('inspector_name', "")
+    site_name = st.session_state.get('current_site_name', "")
+    building_name = st.session_state.get('current_building_name', "")
+    
+    for item in st.session_state.inspection_items:
+        # 既に保存済みの項目はスキップ
+        item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
+        if item_key in st.session_state.saved_items:
+            continue
+            
+        rows.append({
+            "点検日": inspection_date.strftime("%Y-%m-%d"),
+            "点検者名": inspector_name,
+            "現場名": site_name,
+            "棟名": building_name,
+            "劣化番号": item["deterioration_number"],
+            "場所": item["location"],
+            "劣化名": item["deterioration_name"],
+            "写真番号": item["photo_number"],
+            "作成日時": item.get("作成日時", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            "最終更新日時": item.get("最終更新日時", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            "更新者": item.get("更新者", ""),
+            "更新回数": item.get("更新回数", 0)
+        })
+        
+        # 保存済みリストに追加
+        newly_saved_items.append(item_key)
+    
+    # 保存するデータがある場合のみ処理
+    if rows:
+        df_save = pd.DataFrame(rows)
+        
+        csv_path = "data/inspection_data.csv"
+        if os.path.exists(csv_path):
+            try:
+                df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
+                
+                # 現場名と棟名の組み合わせごとに劣化番号を確認し、必要に応じて調整
+                for i, row in enumerate(rows):
+                    # 劣化番号の重複を避けるために、既存の最大劣化番号を取得
+                    if not df_existing.empty and "劣化番号" in df_existing.columns:
+                        existing_max_number = df_existing["劣化番号"].max()
+                        
+                        # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
+                        if row["劣化番号"] <= existing_max_number:
+                            # 劣化番号を既存の最大番号+1に設定
+                            df_save.loc[i, "劣化番号"] = existing_max_number + 1
+                
+                df_save = pd.concat([df_existing, df_save], ignore_index=True)
+            except Exception as e:
+                st.error(f"既存データの読み込み中にエラーが発生しました: {str(e)}")
+                return False
+        
+        try:
+            # データディレクトリが存在しない場合は作成
+            os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+            df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
+            
+            # 保存済みリストを更新
+            st.session_state.saved_items.extend(newly_saved_items)
+            return len(newly_saved_items)
+        except Exception as e:
+            st.error(f"データの保存中にエラーが発生しました: {str(e)}")
+            return False
+    
+    return 0
 
 # データ保存用ディレクトリの作成
 if not os.path.exists('data'):
@@ -370,87 +484,69 @@ with tab_input:
             # 現在の現場名と棟名を表示
             st.info(f"現場名: {st.session_state.current_site_name} / 棟名: {st.session_state.current_building_name} の劣化情報を入力します")
             
-            col1, col2, col3 = st.columns(3)
-            
-            # フォーム送信後に入力欄をクリア
-            if st.session_state.form_submitted:
-                st.session_state.location_input = ""
-                st.session_state.deterioration_input = ""
-                st.session_state.photo_number_input = ""
-                st.session_state.form_submitted = False
-            
-            with col1:
-                # 編集モードの場合は保存済みの値を初期値に設定
-                default_location = st.session_state.editing_saved_row['場所'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '場所' in st.session_state.editing_saved_row else st.session_state.editing_location
-                location = st.text_input(
-                    "場所",
-                    key="location_input",
-                    value=default_location,
-                    help="ひらがなで入力してください（例：いっかい）"
-                )
-                if location:
-                    location_suggestions = get_suggestions(location, locations, locations_yomi, locations_dict)
-                    if location_suggestions:
-                        selected_location = st.selectbox(
-                            "場所の候補",
-                            ["入力値を使用"] + location_suggestions,
-                            key="location_suggestions"
-                        )
-                        if selected_location != "入力値を使用":
-                            location = selected_location
+            # フォームを使用して入力を管理
+            with st.form(key=f"deterioration_form_{st.session_state.form_key}"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # 編集モードの場合は保存済みの値を初期値に設定
+                    default_location = st.session_state.editing_saved_row['場所'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '場所' in st.session_state.editing_saved_row else st.session_state.editing_location
+                    location = st.text_input(
+                        "場所",
+                        key="location_input",
+                        value=default_location,
+                        help="ひらがなで入力してください（例：いっかい）"
+                    )
+                    if location:
+                        location_suggestions = get_suggestions(location, locations, locations_yomi, locations_dict)
+                        if location_suggestions:
+                            selected_location = st.selectbox(
+                                "場所の候補",
+                                ["入力値を使用"] + location_suggestions,
+                                key="location_suggestions"
+                            )
+                            if selected_location != "入力値を使用":
+                                location = selected_location
 
-            with col2:
-                # 編集モードの場合は保存済みの値を初期値に設定
-                default_deterioration = st.session_state.editing_saved_row['劣化名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '劣化名' in st.session_state.editing_saved_row else st.session_state.editing_deterioration
-                deterioration_name = st.text_input(
-                    "劣化名",
-                    key="deterioration_input",
-                    value=default_deterioration,
-                    help="ひらがなで入力してください（例：ひび）"
-                )
-                if deterioration_name:
-                    deterioration_suggestions = get_suggestions(deterioration_name, deterioration_types, deteriorations_yomi, deteriorations_dict)
-                    if deterioration_suggestions:
-                        selected_deterioration = st.selectbox(
-                            "劣化名の候補",
-                            ["入力値を使用"] + deterioration_suggestions,
-                            key="deterioration_suggestions"
-                        )
-                        if selected_deterioration != "入力値を使用":
-                            deterioration_name = selected_deterioration
+                with col2:
+                    # 編集モードの場合は保存済みの値を初期値に設定
+                    default_deterioration = st.session_state.editing_saved_row['劣化名'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '劣化名' in st.session_state.editing_saved_row else st.session_state.editing_deterioration
+                    deterioration_name = st.text_input(
+                        "劣化名",
+                        key="deterioration_input",
+                        value=default_deterioration,
+                        help="ひらがなで入力してください（例：ひび）"
+                    )
+                    if deterioration_name:
+                        deterioration_suggestions = get_suggestions(deterioration_name, deterioration_types, deteriorations_yomi, deteriorations_dict)
+                        if deterioration_suggestions:
+                            selected_deterioration = st.selectbox(
+                                "劣化名の候補",
+                                ["入力値を使用"] + deterioration_suggestions,
+                                key="deterioration_suggestions"
+                            )
+                            if selected_deterioration != "入力値を使用":
+                                deterioration_name = selected_deterioration
 
-            with col3:
-                # 編集モードの場合は保存済みの値を初期値に設定
-                default_photo = st.session_state.editing_saved_row['写真番号'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '写真番号' in st.session_state.editing_saved_row else st.session_state.editing_photo
-                photo_number = st.text_input(
-                    "写真番号",
-                    key="photo_number_input",
-                    value=default_photo
-                )
+                with col3:
+                    # 編集モードの場合は保存済みの値を初期値に設定
+                    default_photo = st.session_state.editing_saved_row['写真番号'] if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data and '写真番号' in st.session_state.editing_saved_row else st.session_state.editing_photo
+                    photo_number = st.text_input(
+                        "写真番号",
+                        key="photo_number_input",
+                        value=default_photo
+                    )
 
-            # 一時的に値を保存
-            st.session_state.temp_location = location
-            st.session_state.temp_deterioration = deterioration_name
-            st.session_state.temp_photo = photo_number
-
-            # 編集モード時のボタンテキストを変更
-            button_text = "更新" if st.session_state.editing_item_index >= 0 else "劣化項目を追加"
-            
-            # ボタンクリック時の処理を直接実行するように変更
-            if st.button(button_text, key="add_deterioration_button"):
-                # 入力値が空でないか確認
-                if location and deterioration_name:
-                    # 一時的に値を保存
-                    st.session_state.temp_location = location
-                    st.session_state.temp_deterioration = deterioration_name
-                    st.session_state.temp_photo = photo_number
-                    
-                    # 劣化項目を追加
-                    add_item()
-                    st.success(f"劣化項目「{location} / {deterioration_name}」を追加しました")
-                    st.rerun()  # 画面を更新して追加された項目を表示
-                else:
-                    st.error("場所と劣化名は必須項目です")
+                # 編集モード時のボタンテキストを変更
+                button_text = "更新" if st.session_state.editing_item_index >= 0 else "劣化項目を追加"
+                
+                # フォーム送信ボタン
+                submit_button = st.form_submit_button(button_text)
+                
+                if submit_button:
+                    # フォーム送信時の処理
+                    if handle_form_submit():
+                        st.success(f"劣化項目「{location} / {deterioration_name}」を追加しました")
     else:
         # 現場名と棟名が入力されていない場合のメッセージ
         st.warning("劣化情報を入力するには、まず「現場名」と「棟名」を入力してください。")
@@ -519,7 +615,7 @@ with tab_input:
                     st.markdown("---")
 
     # 保存ボタン
-    if st.button("保存"):
+    if st.button("保存", key="save_button"):
         # 編集モードの場合
         if 'editing_saved_data' in st.session_state and st.session_state.editing_saved_data:
             if update_saved_data():
@@ -527,65 +623,12 @@ with tab_input:
                 st.session_state.active_tab = "view"  # データ閲覧タブに切り替え
                 st.rerun()
         else:
-            # 既存の新規保存処理
-            # 劣化データを展開して保存用のデータフレームを作成
-            rows = []
-            newly_saved_items = []
+            # 新規保存処理
+            saved_count = save_inspection_data()
             
-            for item in st.session_state.inspection_items:
-                # 既に保存済みの項目はスキップ
-                item_key = f"{item['deterioration_number']}_{item['location']}_{item['deterioration_name']}_{item['photo_number']}"
-                if item_key in st.session_state.saved_items:
-                    continue
-                    
-                rows.append({
-                    "点検日": inspection_date.strftime("%Y-%m-%d"),
-                    "点検者名": inspector_name,
-                    "現場名": site_name,
-                    "棟名": building_name,
-                    "劣化番号": item["deterioration_number"],
-                    "場所": item["location"],
-                    "劣化名": item["deterioration_name"],
-                    "写真番号": item["photo_number"]
-                })
-                
-                # 保存済みリストに追加
-                newly_saved_items.append(item_key)
-            
-            # 保存するデータがある場合のみ処理
-            if rows:
-                df_save = pd.DataFrame(rows)
-                
-                csv_path = "data/inspection_data.csv"
-                if os.path.exists(csv_path):
-                    df_existing = pd.read_csv(csv_path, encoding='utf-8-sig')
-                    
-                    # 現場名と棟名の組み合わせごとに劣化番号を確認し、必要に応じて調整
-                    for i, row in enumerate(rows):
-                        # 劣化番号の重複を避けるために、既存の最大劣化番号を取得
-                        if not df_existing.empty and "劣化番号" in df_existing.columns:
-                            existing_max_number = df_existing["劣化番号"].max()
-                            
-                            # 新しいデータの劣化番号が既存の最大番号以下の場合、番号を調整
-                            if row["劣化番号"] <= existing_max_number:
-                                # 劣化番号を既存の最大番号+1に設定
-                                df_save.loc[i, "劣化番号"] = existing_max_number + 1
-                    
-                    df_save = pd.concat([df_existing, df_save], ignore_index=True)
-                
-                df_save.to_csv(csv_path, index=False, encoding='utf-8-sig')
-                
-                # 保存済みリストを更新
-                st.session_state.saved_items.extend(newly_saved_items)
-                
-                st.success(f"{len(rows)}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
-                
-                # 保存後にフォームをリセットして新規入力を可能にする
-                st.session_state.form_submitted = True
-                st.session_state.temp_location = ""
-                st.session_state.temp_deterioration = ""
-                st.session_state.temp_photo = ""
-            else:
+            if saved_count > 0:
+                st.success(f"{saved_count}件のデータを保存しました。入力データはそのまま残っています。必要に応じて編集・削除できます。")
+            elif saved_count == 0:
                 st.info("保存するデータがありません。すべての項目は既に保存済みです。")
 
 with tab_view:
